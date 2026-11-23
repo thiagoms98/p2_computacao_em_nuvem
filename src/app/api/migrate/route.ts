@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Readable } from "node:stream";
 import { getDriveClient, getBlobContainer, getExportName, isGoogleWorkspaceFile, listDriveFiles } from "@/lib/cloud";
 
 export const runtime = "nodejs";
@@ -21,7 +22,10 @@ export async function POST() {
           ? await drive.files.export({ fileId: file.id, mimeType: "application/pdf" }, { responseType: "stream" })
           : await drive.files.get({ fileId: file.id, alt: "media", supportsAllDrives: true }, { responseType: "stream" });
         const blockBlob = container.getBlockBlobClient(blobName);
-        await blockBlob.uploadStream(media.data as NodeJS.ReadableStream, 4 * 1024 * 1024, 5, {
+        const stream = media.data instanceof Readable
+          ? media.data
+          : Readable.fromWeb(media.data as unknown as import("node:stream/web").ReadableStream<Uint8Array>);
+        await blockBlob.uploadStream(stream, 4 * 1024 * 1024, 5, {
           blobHTTPHeaders: { blobContentType: isGoogleWorkspaceFile(file.mimeType) ? "application/pdf" : file.mimeType },
         });
         const result: TransferResult = { id: file.id, name: file.name, blobName, status: "success", message: "Transferido com sucesso" };
